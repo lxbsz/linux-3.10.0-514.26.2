@@ -1,0 +1,10 @@
+--- include/target/target_core_fabric.h
++++ include/target/target_core_fabric.h
+@@ -4,7 +4,6 @@
+ struct target_core_fabric_ops {
+ 	struct module *module;
+ 	const char *name;
+-	struct configfs_subsystem *tf_subsys;
+ 	char *(*get_fabric_name)(void);
+ 	u8 (*get_fabric_proto_ident)(struct se_portal_group *);
+ 	char *(*tpg_get_wwn)(struct se_portal_group *);

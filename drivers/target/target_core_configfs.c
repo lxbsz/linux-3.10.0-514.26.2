@@ -223,10 +223,6 @@ static struct config_group *target_core_register_fabric(
 
 	pr_debug("Target_Core_ConfigFS: REGISTER -> Allocated Fabric:"
 			" %s\n", tf->tf_group.cg_item.ci_name);
-	/*
-	 * Setup tf_ops.tf_subsys pointer for usage with configfs_depend_item()
-	 */
-	tf->tf_ops.tf_subsys = tf->tf_subsys;
 	tf->tf_fabric = &tf->tf_group.cg_item;
 	pr_debug("Target_Core_ConfigFS: REGISTER -> Set tf->tf_fabric"
 			" for %s\n", name);
@@ -302,10 +298,17 @@ static struct configfs_subsystem target_core_fabrics = {
 	},
 };
 
-struct configfs_subsystem *target_core_subsystem[] = {
-	&target_core_fabrics,
-	NULL,
-};
+int target_depend_item(struct config_item *item)
+{
+	return configfs_depend_item(&target_core_fabrics, item);
+}
+EXPORT_SYMBOL(target_depend_item);
+
+void target_undepend_item(struct config_item *item)
+{
+	return configfs_undepend_item(&target_core_fabrics, item);
+}
+EXPORT_SYMBOL(target_undepend_item);
 
 /*##############################################################################
 // Start functions called by external Target Fabrics Modules
@@ -348,7 +351,6 @@ struct target_fabric_configfs *target_fabric_configfs_init(
 	tf->tf_module = fabric_mod;
 	target_fabric_setup_cits(tf);
 
-	tf->tf_subsys = target_core_subsystem[0];
 	snprintf(tf->tf_name, TARGET_FABRIC_NAME_SIZE, "%s", name);
 
 	mutex_lock(&g_tf_lock);
@@ -537,11 +539,6 @@ int target_fabric_configfs_register(
 			" pointer\n");
 		return -EINVAL;
 	}
-	if (!tf->tf_subsys) {
-		pr_err("Unable to target struct config_subsystem"
-			" pointer\n");
-		return -EINVAL;
-	}
 	ret = target_fabric_tf_ops_check(tf);
 	if (ret < 0)
 		return ret;
@@ -555,17 +552,9 @@ EXPORT_SYMBOL(target_fabric_configfs_register);
 void target_fabric_configfs_deregister(
 	struct target_fabric_configfs *tf)
 {
-	struct configfs_subsystem *su;
-
 	if (!tf) {
 		pr_err("Unable to locate passed target_fabric_"
 			"configfs\n");
-		return;
-	}
-	su = tf->tf_subsys;
-	if (!su) {
-		pr_err("Unable to locate passed tf->tf_subsys"
-			" pointer\n");
 		return;
 	}
 	pr_debug("<<<<<<<<<<<<<<<<<<<<<< BEGIN FABRIC API >>>>>>>>>>"
@@ -583,7 +572,6 @@ void target_fabric_configfs_deregister(
 	pr_debug("Target_Core_ConfigFS: DEREGISTER -> Releasing tf:"
 			" %s\n", tf->tf_name);
 	tf->tf_module = NULL;
-	tf->tf_subsys = NULL;
 	kfree(tf);
 
 	pr_debug("<<<<<<<<<<<<<<<<<<<<<< END FABRIC API >>>>>>>>>>>>>>>>>"
@@ -3125,7 +3113,7 @@ static int __init target_core_init_configfs(void)
 {
 	struct config_group *target_cg, *hba_cg = NULL, *alua_cg = NULL;
 	struct config_group *lu_gp_cg = NULL;
-	struct configfs_subsystem *subsys;
+	struct configfs_subsystem *subsys = &target_core_fabrics;
 	struct t10_alua_lu_gp *lu_gp;
 	int ret;
 
@@ -3133,7 +3121,6 @@ static int __init target_core_init_configfs(void)
 		" Engine: %s on %s/%s on "UTS_RELEASE"\n",
 		TARGET_CORE_VERSION, utsname()->sysname, utsname()->machine);
 
-	subsys = target_core_subsystem[0];
 	config_group_init(&subsys->su_group);
 	mutex_init(&subsys->su_mutex);
 
@@ -3263,12 +3250,9 @@ out_global:
 
 static void __exit target_core_exit_configfs(void)
 {
-	struct configfs_subsystem *subsys;
 	struct config_group *hba_cg, *alua_cg, *lu_gp_cg;
 	struct config_item *item;
 	int i;
-
-	subsys = target_core_subsystem[0];
 
 	lu_gp_cg = &alua_lu_gps_group;
 	for (i = 0; lu_gp_cg->default_groups[i]; i++) {
@@ -3300,8 +3284,8 @@ static void __exit target_core_exit_configfs(void)
 	 * We expect subsys->su_group.default_groups to be released
 	 * by configfs subsystem provider logic..
 	 */
-	configfs_unregister_subsystem(subsys);
-	kfree(subsys->su_group.default_groups);
+	configfs_unregister_subsystem(&target_core_fabrics);
+	kfree(target_core_fabrics.su_group.default_groups);
 
 	core_alua_free_lu_gp(default_lu_gp);
 	default_lu_gp = NULL;

@@ -1,0 +1,10 @@
+--- drivers/target/target_core_configfs.c
++++ drivers/target/target_core_configfs.c
+@@ -470,7 +473,6 @@
+ 	 * struct target_fabric_configfs->tf_cit_tmpl
+ 	 */
+ 	tf->tf_module = fo->module;
+-	tf->tf_subsys = target_core_subsystem[0];
+ 	snprintf(tf->tf_name, TARGET_FABRIC_NAME_SIZE, "%s", fo->name);
+ 
+ 	tf->tf_ops = *fo;
