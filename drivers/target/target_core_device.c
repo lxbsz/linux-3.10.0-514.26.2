@@ -59,7 +59,6 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 {
 	struct se_lun *se_lun = NULL;
 	struct se_session *se_sess = se_cmd->se_sess;
-	struct se_device *dev;
 	unsigned long flags;
 
 	if (unpacked_lun >= TRANSPORT_MAX_LUNS_PER_TPG)
@@ -126,16 +125,21 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		percpu_ref_get(&se_lun->lun_ref);
 		se_cmd->lun_ref_active = true;
 	}
+	/*
+	 * RCU reference protected by percpu se_lun->lun_ref taken above that
+	 * must drop to zero (including initial reference) before this se_lun
+	 * pointer can be kfree_rcu() by the final se_lun->lun_group put via
+	 * target_core_fabric_configfs.c:target_fabric_port_release
+	 */
+	se_cmd->se_dev = rcu_dereference_raw(se_lun->lun_se_dev);
+	atomic_long_inc(&se_cmd->se_dev->num_cmds);
 
-	/* Directly associate cmd with se_dev */
-	se_cmd->se_dev = se_lun->lun_se_dev;
-
-	dev = se_lun->lun_se_dev;
-	atomic_long_inc(&dev->num_cmds);
 	if (se_cmd->data_direction == DMA_TO_DEVICE)
-		atomic_long_add(se_cmd->data_length, &dev->write_bytes);
+		atomic_long_add(se_cmd->data_length,
+				&se_cmd->se_dev->write_bytes);
 	else if (se_cmd->data_direction == DMA_FROM_DEVICE)
-		atomic_long_add(se_cmd->data_length, &dev->read_bytes);
+		atomic_long_add(se_cmd->data_length,
+				&se_cmd->se_dev->read_bytes);
 
 	return 0;
 }
@@ -172,10 +176,11 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 			unpacked_lun);
 		return -ENODEV;
 	}
-
-	/* Directly associate cmd with se_dev */
-	se_cmd->se_dev = se_lun->lun_se_dev;
-	se_tmr->tmr_dev = se_lun->lun_se_dev;
+	/*
+	 * XXX: Add percpu se_lun->lun_ref reference count for TMR
+	 */
+	se_cmd->se_dev = rcu_dereference_raw(se_lun->lun_se_dev);
+	se_tmr->tmr_dev = rcu_dereference_raw(se_lun->lun_se_dev);
 
 	spin_lock_irqsave(&se_tmr->tmr_dev->se_tmr_lock, flags);
 	list_add_tail(&se_tmr->tmr_list, &se_tmr->tmr_dev->dev_tmr_list);
@@ -385,6 +390,11 @@ int core_disable_device_list_for_node(
 	struct se_dev_entry *deve = nacl->device_list[mapped_lun];
 
 	/*
+	 * rcu_dereference_raw protected by se_lun->lun_group symlink
+	 * reference to se_device->dev_group.
+	 */
+	struct se_device *dev = rcu_dereference_raw(lun->lun_se_dev);
+	/*
 	 * If the MappedLUN entry is being disabled, the entry in
 	 * port->sep_alua_list must be removed now before clearing the
 	 * struct se_dev_entry pointers below as logic in
@@ -419,7 +429,7 @@ int core_disable_device_list_for_node(
 	deve->attach_count--;
 	spin_unlock_irq(&nacl->device_list_lock);
 
-	core_scsi3_free_pr_reg_from_nacl(lun->lun_se_dev, nacl);
+	core_scsi3_free_pr_reg_from_nacl(dev, nacl);
 	return 0;
 }
 
@@ -518,11 +528,11 @@ static void core_export_port(
 	struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem = NULL;
 
 	spin_lock(&dev->se_port_lock);
-	spin_lock(&lun->lun_sep_lock);
+	rcu_read_lock();
 	port->sep_tpg = tpg;
 	port->sep_lun = lun;
 	lun->lun_sep = port;
-	spin_unlock(&lun->lun_sep_lock);
+	rcu_read_unlock();
 
 	list_add_tail(&port->sep_list, &dev->dev_sep_list);
 	spin_unlock(&dev->se_port_lock);
@@ -600,12 +610,12 @@ void core_dev_unexport(
 	struct se_hba *hba = dev->se_hba;
 	struct se_port *port = lun->lun_sep;
 
-	spin_lock(&lun->lun_sep_lock);
+	rcu_read_lock();
 	if (lun->lun_se_dev == NULL) {
-		spin_unlock(&lun->lun_sep_lock);
+		rcu_read_unlock();
 		return;
 	}
-	spin_unlock(&lun->lun_sep_lock);
+	rcu_read_unlock();
 
 	spin_lock(&dev->se_port_lock);
 	core_release_port(dev, port);
@@ -1340,6 +1350,7 @@ int core_dev_add_initiator_node_lun_acl(
 	u32 lun_access)
 {
 	struct se_lun *lun;
+	struct se_device *dev;
 	struct se_node_acl *nacl;
 
 	lun = core_dev_get_lun(tpg, unpacked_lun);
@@ -1350,6 +1361,12 @@ int core_dev_add_initiator_node_lun_acl(
 			tpg->se_tpg_tfo->tpg_get_tag(tpg));
 		return -EINVAL;
 	}
+
+	/*
+	 * rcu_dereference_raw protected by se_lun->lun_group symlink
+	 * reference to se_device->dev_group.
+	 */
+	dev = rcu_dereference_raw(lun->lun_se_dev);
 
 	nacl = lacl->se_lun_nacl;
 	if (!nacl)
@@ -1379,7 +1396,7 @@ int core_dev_add_initiator_node_lun_acl(
 	 * Check to see if there are any existing persistent reservation APTPL
 	 * pre-registrations that need to be enabled for this LUN ACL..
 	 */
-	core_scsi3_check_aptpl_registration(lun->lun_se_dev, tpg, lun, nacl,
+	core_scsi3_check_aptpl_registration(dev, tpg, lun, nacl,
 					    lacl->mapped_lun);
 	return 0;
 }
@@ -1480,6 +1497,7 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 	dev->se_hba = hba;
 	dev->transport = hba->backend->ops;
 	dev->prot_length = sizeof(struct se_dif_v1_tuple);
+	dev->hba_index = hba->hba_index;
 
 	INIT_LIST_HEAD(&dev->dev_list);
 	INIT_LIST_HEAD(&dev->dev_sep_list);
@@ -1540,7 +1558,6 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 	init_completion(&xcopy_lun->lun_shutdown_comp);
 	INIT_LIST_HEAD(&xcopy_lun->lun_acl_list);
 	spin_lock_init(&xcopy_lun->lun_acl_lock);
-	spin_lock_init(&xcopy_lun->lun_sep_lock);
 	init_completion(&xcopy_lun->lun_ref_comp);
 
 	return dev;

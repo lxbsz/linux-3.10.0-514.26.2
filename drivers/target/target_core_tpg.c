@@ -140,7 +140,8 @@ void core_tpg_add_node_to_devs(
 
 		spin_unlock(&tpg->tpg_lun_lock);
 
-		dev = lun->lun_se_dev;
+		dev = rcu_dereference_check(lun->lun_se_dev,
+					    lockdep_is_held(&tpg->tpg_lun_mutex));
 		/*
 		 * By default in LIO-Target $FABRIC_MOD,
 		 * demo_mode_write_protect is ON, or READ_ONLY;
@@ -661,7 +662,6 @@ static int core_tpg_setup_virtual_lun0(struct se_portal_group *se_tpg)
 	init_completion(&lun->lun_shutdown_comp);
 	INIT_LIST_HEAD(&lun->lun_acl_list);
 	spin_lock_init(&lun->lun_acl_lock);
-	spin_lock_init(&lun->lun_sep_lock);
 	init_completion(&lun->lun_ref_comp);
 
 	ret = core_tpg_add_lun(se_tpg, lun, lun_access, dev);
@@ -698,7 +698,6 @@ int core_tpg_register(
 		init_completion(&lun->lun_shutdown_comp);
 		INIT_LIST_HEAD(&lun->lun_acl_list);
 		spin_lock_init(&lun->lun_acl_lock);
-		spin_lock_init(&lun->lun_sep_lock);
 		init_completion(&lun->lun_ref_comp);
 	}
 

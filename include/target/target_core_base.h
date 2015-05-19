@@ -722,7 +722,6 @@ struct se_lun {
 	u32			unpacked_lun;
 	atomic_t		lun_acl_count;
 	spinlock_t		lun_acl_lock;
-	spinlock_t		lun_sep_lock;
 	struct completion	lun_shutdown_comp;
 	struct list_head	lun_acl_list;
 	struct se_device	*lun_se_dev;
@@ -818,6 +817,9 @@ struct se_device {
 	struct se_lun		xcopy_lun;
 	/* Protection Information */
 	int			prot_length;
+	/* For se_lun->lun_se_dev RCU read-side critical access */
+	u32			hba_index;
+	struct rcu_head		rcu_head;
 };
 
 struct se_hba {
@@ -838,9 +840,9 @@ struct se_hba {
 };
 
 struct scsi_port_stats {
-       u64     cmd_pdus;
-       u64     tx_data_octets;
-       u64     rx_data_octets;
+	atomic_long_t	cmd_pdus;
+	atomic_long_t	tx_data_octets;
+	atomic_long_t	rx_data_octets;
 };
 
 struct se_port {

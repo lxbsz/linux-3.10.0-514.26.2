@@ -2015,7 +2015,11 @@ ssize_t core_alua_store_tg_pt_gp_info(
 {
 	struct se_portal_group *tpg;
 	struct se_lun *lun;
-	struct se_device *dev = port->sep_lun->lun_se_dev;
+	/*
+	 * rcu_dereference_raw protected by se_lun->lun_group symlink
+	 * reference to se_device->dev_group.
+	 */
+	struct se_device *dev = rcu_dereference_raw(port->sep_lun->lun_se_dev);
 	struct t10_alua_tg_pt_gp *tg_pt_gp = NULL, *tg_pt_gp_new = NULL;
 	struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem;
 	unsigned char buf[TG_PT_GROUP_NAME_BUF];
