@@ -276,6 +276,19 @@ void __nla_put_64bit(struct sk_buff *skb, int attrtype, int attrlen,
 int nla_put_64bit(struct sk_buff *skb, int attrtype, int attrlen,
 		  const void *data, int padattr);
 /**
+ * nla_put_u64_64bit - Add a u64 netlink attribute to a skb and align it
+ * @skb: socket buffer to add attribute to
+ * @attrtype: attribute type
+ * @value: numeric value
+ * @padattr: attribute type for the padding
+ */
+static inline int nla_put_u64_64bit(struct sk_buff *skb, int attrtype,
+				    u64 value, int padattr)
+{
+	return nla_put_64bit(skb, attrtype, sizeof(u64), &value, padattr);
+}
+
+/**
  * nla_need_padding_for_64bit - test 64-bit alignment of the next attribute
  * @skb: socket buffer the message is stored in
  *
