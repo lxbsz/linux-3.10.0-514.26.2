@@ -89,6 +89,7 @@ int	transport_set_vpd_ident(struct t10_vpd *, unsigned char *);
 
 extern struct configfs_attribute *sbc_attrib_attrs[];
 extern struct configfs_attribute *passthrough_attrib_attrs[];
+struct	se_device *target_find_device(int id, bool do_depend);
 
 /* core helpers also used by command snooping in pscsi */
 void	*transport_kmap_data_sg(struct se_cmd *);
