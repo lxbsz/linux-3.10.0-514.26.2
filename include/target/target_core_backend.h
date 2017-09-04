@@ -4,6 +4,7 @@
 #define TRANSPORT_PLUGIN_PHBA_PDEV		1
 #define TRANSPORT_PLUGIN_VHBA_PDEV		2
 #define TRANSPORT_PLUGIN_VHBA_VDEV		3
+#define TRANSPORT_FLAG_PASSTHROUGH_PGR		4
 
 struct target_backend_ops {
 	char name[16];

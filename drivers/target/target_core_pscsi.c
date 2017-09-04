@@ -45,7 +45,9 @@
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
 
+#include "target_core_internal.h"
 #include "target_core_alua.h"
+#include "target_core_pr.h"
 #include "target_core_pscsi.h"
 
 #define ISPRINT(a)  ((a >= ' ') && (a <= '~'))
@@ -1009,12 +1011,51 @@ static sense_reason_t
 pscsi_parse_cdb(struct se_cmd *cmd)
 {
 	unsigned char *cdb = cmd->t_task_cdb;
+//	struct se_device *dev = cmd->se_dev;
+//	unsigned int size;
+
 
 	if (cmd->se_cmd_flags & SCF_BIDI)
 		return TCM_UNSUPPORTED_SCSI_OPCODE;
 
 	pscsi_clear_cdb_lun(cdb);
+#if 0
+	/*
+	 * For PERSISTENT RESERVE IN/OUT, RELEASE, and RESERVE we need to
+	 * emulate the response, since tcmu does not have the information
+	 * required to process these commands.
+	 */
+	if (!(dev->transport->transport_type &
+				TRANSPORT_FLAG_PASSTHROUGH_PGR)) {
+		if (cdb[0] == PERSISTENT_RESERVE_IN) {
+			cmd->execute_cmd = target_scsi3_emulate_pr_in;
+			size = get_unaligned_be16(&cdb[7]);
+			return target_cmd_size_check(cmd, size);
+		}
+		if (cdb[0] == PERSISTENT_RESERVE_OUT) {
+			cmd->execute_cmd = target_scsi3_emulate_pr_out;
+			size = get_unaligned_be32(&cdb[5]);
+			return target_cmd_size_check(cmd, size);
+		}
 
+		if (cdb[0] == RELEASE || cdb[0] == RELEASE_10) {
+			cmd->execute_cmd = target_scsi2_reservation_release;
+			if (cdb[0] == RELEASE_10)
+				size = get_unaligned_be16(&cdb[7]);
+			else
+				size = cmd->data_length;
+			return target_cmd_size_check(cmd, size);
+		}
+		if (cdb[0] == RESERVE || cdb[0] == RESERVE_10) {
+			cmd->execute_cmd = target_scsi2_reservation_reserve;
+			if (cdb[0] == RESERVE_10)
+				size = get_unaligned_be16(&cdb[7]);
+			else
+				size = cmd->data_length;
+			return target_cmd_size_check(cmd, size);
+		}
+	}
+#endif
 	/*
 	 * For REPORT LUNS we always need to emulate the response, for everything
 	 * else the default for pSCSI is to pass the command to the underlying
@@ -1180,7 +1221,7 @@ static void pscsi_req_done(struct request *req, int uptodate)
 static const struct target_backend_ops pscsi_ops = {
 	.name			= "pscsi",
 	.owner			= THIS_MODULE,
-	.transport_type		= TRANSPORT_PLUGIN_PHBA_PDEV,
+	.transport_type		= TRANSPORT_PLUGIN_PHBA_PDEV | TRANSPORT_FLAG_PASSTHROUGH_PGR,
 	.attach_hba		= pscsi_attach_hba,
 	.detach_hba		= pscsi_detach_hba,
 	.pmode_enable_hba	= pscsi_pmode_enable_hba,
