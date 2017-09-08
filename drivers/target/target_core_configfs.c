@@ -697,18 +697,16 @@ static inline struct se_dev_attrib *to_attrib(struct config_item *item)
 			da_group);
 }
 
-static ssize_t target_core_dev_show_attr_alua_support(struct config_item *item, char *page)
+static ssize_t target_core_dev_show_attr_alua_support(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = to_attrib(item);
 	u8 flags = da->da_dev->transport->transport_type;
 
 	return snprintf(page, PAGE_SIZE, "%d\n",
 			flags & TRANSPORT_FLAG_PASSTHROUGH_ALUA ? 0 : 1);
 }
 
-static ssize_t target_core_dev_show_attr_pgr_support(struct config_item *item, char *page)
+static ssize_t target_core_dev_show_attr_pgr_support(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = to_attrib(item);
 	u8 flags = da->da_dev->transport->transport_type;
 
 	return snprintf(page, PAGE_SIZE, "%d\n",
@@ -771,19 +769,17 @@ TB_DEV_ATTR_RO(target_pt, hw_block_size);
 TB_DEV_ATTR_RO(target_pt, hw_max_sectors);
 TB_DEV_ATTR_RO(target_pt, hw_queue_depth);
 
-static ssize_t target_pt_dev_show_attr_alua_support(struct config_item *item, char *page)
+static ssize_t target_pt_dev_show_attr_alua_support(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = to_attrib(item);
-	u8 flags = da->da_dev->transport->transport_flags;
+	u8 flags = da->da_dev->transport->transport_type;
 
 	return snprintf(page, PAGE_SIZE, "%d\n",
 			flags & TRANSPORT_FLAG_PASSTHROUGH_ALUA ? 0 : 1);
 }
 
-static ssize_t target_pt_dev_show_attr_pgr_support(struct config_item *item, char *page)
+static ssize_t target_pt_dev_show_attr_pgr_support(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = to_attrib(item);
-	u8 flags = da->da_dev->transport->transport_flags;
+	u8 flags = da->da_dev->transport->transport_type;
 
 	return snprintf(page, PAGE_SIZE, "%d\n",
 			flags & TRANSPORT_FLAG_PASSTHROUGH_PGR ? 0 : 1);
@@ -1110,7 +1106,7 @@ static ssize_t target_core_dev_pr_show_attr_res_holder(struct se_device *dev,
 {
 	int ret;
 
-	if (dev->transport->transport_type == TRANSPORT_FLAG_PASSTHROUGH_PGR)
+	if (dev->transport->transport_type & TRANSPORT_FLAG_PASSTHROUGH_PGR)
 		return sprintf(page, "Passthrough\n");
 
 	spin_lock(&dev->dev_reservation_lock);
@@ -1261,7 +1257,7 @@ SE_DEV_PR_ATTR_RO(res_pr_type);
 static ssize_t target_core_dev_pr_show_attr_res_type(
 		struct se_device *dev, char *page)
 {
-	if (dev->transport->transport_type == TRANSPORT_FLAG_PASSTHROUGH_PGR)
+	if (dev->transport->transport_type & TRANSPORT_FLAG_PASSTHROUGH_PGR)
 		return sprintf(page, "SPC_PASSTHROUGH\n");
 	else if (dev->dev_reservation_flags & DRF_SPC2_RESERVATIONS)
 		return sprintf(page, "SPC2_RESERVATIONS\n");
@@ -1274,7 +1270,7 @@ SE_DEV_PR_ATTR_RO(res_type);
 static ssize_t target_core_dev_pr_show_attr_res_aptpl_active(
 		struct se_device *dev, char *page)
 {
-	if (dev->transport->transport_type == TRANSPORT_FLAG_PASSTHROUGH_PGR)
+	if (dev->transport->transport_type & TRANSPORT_FLAG_PASSTHROUGH_PGR)
 		return 0;
 
 	return sprintf(page, "APTPL Bit Status: %s\n",
@@ -1289,7 +1285,7 @@ SE_DEV_PR_ATTR_RO(res_aptpl_active);
 static ssize_t target_core_dev_pr_show_attr_res_aptpl_metadata(
 		struct se_device *dev, char *page)
 {
-	if (dev->transport->transport_type == TRANSPORT_FLAG_PASSTHROUGH_PGR)
+	if (dev->transport->transport_type & TRANSPORT_FLAG_PASSTHROUGH_PGR)
 		return 0;
 
 	return sprintf(page, "Ready to process PR APTPL metadata..\n");
@@ -1336,7 +1332,7 @@ static ssize_t target_core_dev_pr_store_attr_res_aptpl_metadata(
 	u16 port_rpti = 0, tpgt = 0;
 	u8 type = 0, scope;
 
-	if (dev->transport->transport_type == TRANSPORT_FLAG_PASSTHROUGH_PGR)
+	if (dev->transport->transport_type & TRANSPORT_FLAG_PASSTHROUGH_PGR)
 		return 0;
 	if (dev->dev_reservation_flags & DRF_SPC2_RESERVATIONS)
 		return 0;

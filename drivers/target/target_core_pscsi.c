@@ -1221,7 +1221,7 @@ static void pscsi_req_done(struct request *req, int uptodate)
 static const struct target_backend_ops pscsi_ops = {
 	.name			= "pscsi",
 	.owner			= THIS_MODULE,
-	.transport_type		= TRANSPORT_PLUGIN_PHBA_PDEV | TRANSPORT_FLAG_PASSTHROUGH_PGR,
+	.transport_type		= TRANSPORT_PLUGIN_PHBA_PDEV | TRANSPORT_FLAG_PASSTHROUGH_PGR | TRANSPORT_FLAG_PASSTHROUGH_ALUA,
 	.attach_hba		= pscsi_attach_hba,
 	.detach_hba		= pscsi_detach_hba,
 	.pmode_enable_hba	= pscsi_pmode_enable_hba,

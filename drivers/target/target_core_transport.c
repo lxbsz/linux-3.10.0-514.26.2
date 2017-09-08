@@ -1174,7 +1174,7 @@ transport_check_alloc_task_attr(struct se_cmd *cmd)
 	 * Check if SAM Task Attribute emulation is enabled for this
 	 * struct se_device storage object
 	 */
-	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
+	if (dev->transport->transport_type & TRANSPORT_PLUGIN_PHBA_PDEV)
 		return 0;
 
 	if (cmd->sam_task_attr == TCM_ACA_TAG) {
@@ -1725,7 +1725,7 @@ static bool target_handle_task_attr(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
 
-	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
+	if (dev->transport->transport_type & TRANSPORT_PLUGIN_PHBA_PDEV)
 		return false;
 
 	/*
@@ -1856,7 +1856,7 @@ static void transport_complete_task_attr(struct se_cmd *cmd)
 {
 	struct se_device *dev = cmd->se_dev;
 
-	if (dev->transport->transport_type == TRANSPORT_PLUGIN_PHBA_PDEV)
+	if (dev->transport->transport_type & TRANSPORT_PLUGIN_PHBA_PDEV)
 		return;
 
 	if (cmd->sam_task_attr == TCM_SIMPLE_TAG) {
