@@ -691,6 +691,32 @@ TB_DEV_ATTR(target_core, unmap_granularity, S_IRUGO | S_IWUSR);
 TB_DEV_ATTR(target_core, unmap_granularity_alignment, S_IRUGO | S_IWUSR);
 TB_DEV_ATTR(target_core, max_write_same_len, S_IRUGO | S_IWUSR);
 
+static inline struct se_dev_attrib *to_attrib(struct config_item *item)
+{
+	return container_of(to_config_group(item), struct se_dev_attrib,
+			da_group);
+}
+
+static ssize_t target_core_dev_show_attr_alua_support(struct config_item *item, char *page)
+{
+	struct se_dev_attrib *da = to_attrib(item);
+	u8 flags = da->da_dev->transport->transport_type;
+
+	return snprintf(page, PAGE_SIZE, "%d\n",
+			flags & TRANSPORT_FLAG_PASSTHROUGH_ALUA ? 0 : 1);
+}
+
+static ssize_t target_core_dev_show_attr_pgr_support(struct config_item *item, char *page)
+{
+	struct se_dev_attrib *da = to_attrib(item);
+	u8 flags = da->da_dev->transport->transport_type;
+
+	return snprintf(page, PAGE_SIZE, "%d\n",
+			flags & TRANSPORT_FLAG_PASSTHROUGH_PGR ? 0 : 1);
+}
+TB_DEV_ATTR_RO(target_core, alua_support);
+TB_DEV_ATTR_RO(target_core, pgr_support);
+
 CONFIGFS_EATTR_STRUCT(target_core_dev_attrib, se_dev_attrib);
 CONFIGFS_EATTR_OPS(target_core_dev_attrib, se_dev_attrib, da_group);
 
@@ -729,6 +755,8 @@ struct configfs_attribute *sbc_attrib_attrs[] = {
 	&target_core_dev_attrib_unmap_granularity.attr,
 	&target_core_dev_attrib_unmap_granularity_alignment.attr,
 	&target_core_dev_attrib_max_write_same_len.attr,
+	&target_core_dev_attrib_alua_support.attr,
+	&target_core_dev_attrib_pgr_support.attr,
 	NULL,
 };
 EXPORT_SYMBOL(sbc_attrib_attrs);
@@ -743,6 +771,27 @@ TB_DEV_ATTR_RO(target_pt, hw_block_size);
 TB_DEV_ATTR_RO(target_pt, hw_max_sectors);
 TB_DEV_ATTR_RO(target_pt, hw_queue_depth);
 
+static ssize_t target_pt_dev_show_attr_alua_support(struct config_item *item, char *page)
+{
+	struct se_dev_attrib *da = to_attrib(item);
+	u8 flags = da->da_dev->transport->transport_flags;
+
+	return snprintf(page, PAGE_SIZE, "%d\n",
+			flags & TRANSPORT_FLAG_PASSTHROUGH_ALUA ? 0 : 1);
+}
+
+static ssize_t target_pt_dev_show_attr_pgr_support(struct config_item *item, char *page)
+{
+	struct se_dev_attrib *da = to_attrib(item);
+	u8 flags = da->da_dev->transport->transport_flags;
+
+	return snprintf(page, PAGE_SIZE, "%d\n",
+			flags & TRANSPORT_FLAG_PASSTHROUGH_PGR ? 0 : 1);
+}
+
+TB_DEV_ATTR_RO(target_pt, alua_support);
+TB_DEV_ATTR_RO(target_pt, pgr_support);
+
 /*
  * Minimal dev_attrib attributes for devices passing through CDBs.
  * In this case we only provide a few read-only attributes for
@@ -753,6 +802,8 @@ struct configfs_attribute *passthrough_attrib_attrs[] = {
 	&target_pt_dev_attrib_hw_block_size.attr,
 	&target_pt_dev_attrib_hw_max_sectors.attr,
 	&target_pt_dev_attrib_hw_queue_depth.attr,
+	&target_pt_dev_attrib_alua_support.attr,
+	&target_pt_dev_attrib_pgr_support.attr,
 	NULL,
 };
 EXPORT_SYMBOL(passthrough_attrib_attrs);
