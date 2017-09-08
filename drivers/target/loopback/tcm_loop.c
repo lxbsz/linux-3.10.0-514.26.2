@@ -560,9 +560,14 @@ static char *tcm_loop_get_fabric_name(void)
 	return "loopback";
 }
 
+static inline struct tcm_loop_tpg *tl_tpg_fn(struct se_portal_group *se_tpg)
+{
+	return container_of(se_tpg, struct tcm_loop_tpg, tl_se_tpg);
+}
+
 static u8 tcm_loop_get_fabric_proto_ident(struct se_portal_group *se_tpg)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	struct tcm_loop_hba *tl_hba = tl_tpg->tl_hba;
 	/*
 	 * tl_proto_id is set at tcm_loop_configfs.c:tcm_loop_make_scsi_hba()
@@ -589,7 +594,7 @@ static u8 tcm_loop_get_fabric_proto_ident(struct se_portal_group *se_tpg)
 
 static char *tcm_loop_get_endpoint_wwn(struct se_portal_group *se_tpg)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	/*
 	 * Return the passed NAA identifier for the SAS Target Port
 	 */
@@ -598,7 +603,7 @@ static char *tcm_loop_get_endpoint_wwn(struct se_portal_group *se_tpg)
 
 static u16 tcm_loop_get_tag(struct se_portal_group *se_tpg)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	/*
 	 * This Tag is used when forming SCSI Name identifier in EVPD=1 0x83
 	 * to represent the SCSI Target Port.
@@ -618,7 +623,7 @@ static u32 tcm_loop_get_pr_transport_id(
 	int *format_code,
 	unsigned char *buf)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	struct tcm_loop_hba *tl_hba = tl_tpg->tl_hba;
 
 	switch (tl_hba->tl_proto_id) {
@@ -647,7 +652,7 @@ static u32 tcm_loop_get_pr_transport_id_len(
 	struct t10_pr_registration *pr_reg,
 	int *format_code)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	struct tcm_loop_hba *tl_hba = tl_tpg->tl_hba;
 
 	switch (tl_hba->tl_proto_id) {
@@ -680,7 +685,7 @@ static char *tcm_loop_parse_pr_out_transport_id(
 	u32 *out_tid_len,
 	char **port_nexus_ptr)
 {
-	struct tcm_loop_tpg *tl_tpg = se_tpg->se_tpg_fabric_ptr;
+	struct tcm_loop_tpg *tl_tpg = tl_tpg_fn(se_tpg);
 	struct tcm_loop_hba *tl_hba = tl_tpg->tl_hba;
 
 	switch (tl_hba->tl_proto_id) {
@@ -1229,8 +1234,8 @@ static struct se_portal_group *tcm_loop_make_naa_tpg(
 	 * Register the tl_tpg as a emulated SAS TCM Target Endpoint
 	 */
 	ret = core_tpg_register(&tcm_loop_fabric_configfs->tf_ops,
-			wwn, &tl_tpg->tl_se_tpg, tl_tpg,
-			TRANSPORT_TPG_TYPE_NORMAL);
+			wwn, &tl_tpg->tl_se_tpg,
+			tl_hba->tl_proto_id);
 	if (ret < 0)
 		return ERR_PTR(-ENOMEM);
 

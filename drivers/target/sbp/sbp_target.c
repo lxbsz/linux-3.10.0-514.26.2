@@ -2220,8 +2220,7 @@ static struct se_portal_group *sbp_make_tpg(
 	}
 
 	ret = core_tpg_register(&sbp_fabric_configfs->tf_ops, wwn,
-			&tpg->se_tpg, (void *)tpg,
-			TRANSPORT_TPG_TYPE_NORMAL);
+			&tpg->se_tpg, SCSI_PROTOCOL_SBP);
 	if (ret < 0)
 		goto out_unreg_mgt_agt;
 

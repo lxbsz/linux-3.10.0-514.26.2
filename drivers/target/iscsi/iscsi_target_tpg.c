@@ -70,8 +70,7 @@ int iscsit_load_discovery_tpg(void)
 
 	ret = core_tpg_register(
 			&lio_target_fabric_configfs->tf_ops,
-			NULL, &tpg->tpg_se_tpg, tpg,
-			TRANSPORT_TPG_TYPE_DISCOVERY);
+			NULL, &tpg->tpg_se_tpg, -1);
 	if (ret < 0) {
 		kfree(tpg);
 		return -1;

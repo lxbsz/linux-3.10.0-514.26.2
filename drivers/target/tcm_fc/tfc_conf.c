@@ -338,7 +338,7 @@ static struct se_portal_group *ft_add_tpg(
 	}
 
 	ret = core_tpg_register(&ft_configfs->tf_ops, wwn, &tpg->se_tpg,
-				tpg, TRANSPORT_TPG_TYPE_NORMAL);
+				SCSI_PROTOCOL_FCP);
 	if (ret < 0) {
 		destroy_workqueue(wq);
 		kfree(tpg);
@@ -468,16 +468,21 @@ static char *ft_get_fabric_name(void)
 	return "fc";
 }
 
+static inline struct ft_tpg *ft_tpg(struct se_portal_group *se_tpg)
+{
+	return container_of(se_tpg, struct ft_tpg, se_tpg);
+}
+
 static char *ft_get_fabric_wwn(struct se_portal_group *se_tpg)
 {
-	struct ft_tpg *tpg = se_tpg->se_tpg_fabric_ptr;
+	struct ft_tpg *tpg = ft_tpg(se_tpg);
 
 	return tpg->lport_wwn->name;
 }
 
 static u16 ft_get_tag(struct se_portal_group *se_tpg)
 {
-	struct ft_tpg *tpg = se_tpg->se_tpg_fabric_ptr;
+	struct ft_tpg *tpg = ft_tpg(se_tpg);
 
 	/*
 	 * This tag is used when forming SCSI Name identifier in EVPD=1 0x83
@@ -502,7 +507,7 @@ static void ft_set_default_node_attr(struct se_node_acl *se_nacl)
 
 static u32 ft_tpg_get_inst_index(struct se_portal_group *se_tpg)
 {
-	struct ft_tpg *tpg = se_tpg->se_tpg_fabric_ptr;
+	struct ft_tpg *tpg = ft_tpg(se_tpg);
 
 	return tpg->index;
 }

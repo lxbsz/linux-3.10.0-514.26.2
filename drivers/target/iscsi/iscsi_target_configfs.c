@@ -1543,8 +1543,8 @@ static struct se_portal_group *lio_target_tiqn_addtpg(
 
 	ret = core_tpg_register(
 			&lio_target_fabric_configfs->tf_ops,
-			wwn, &tpg->tpg_se_tpg, tpg,
-			TRANSPORT_TPG_TYPE_NORMAL);
+			wwn, &tpg->tpg_se_tpg,
+			SCSI_PROTOCOL_ISCSI);
 	if (ret < 0)
 		return NULL;
 
@@ -1912,55 +1912,46 @@ static void lio_aborted_task(struct se_cmd *se_cmd)
 	cmd->conn->conn_transport->iscsit_aborted_task(cmd->conn, cmd);
 }
 
+static inline struct iscsi_portal_group *iscsi_tpg(struct se_portal_group *se_tpg) 
+{
+	return container_of(se_tpg, struct iscsi_portal_group, tpg_se_tpg);
+}
+
 static char *lio_tpg_get_endpoint_wwn(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return &tpg->tpg_tiqn->tiqn[0];
+	return &iscsi_tpg(se_tpg)->tpg_tiqn->tiqn[0];
 }
 
 static u16 lio_tpg_get_tag(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpgt;
+	return iscsi_tpg(se_tpg)->tpgt;
 }
 
 static u32 lio_tpg_get_default_depth(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_attrib.default_cmdsn_depth;
+	return iscsi_tpg(se_tpg)->tpg_attrib.default_cmdsn_depth;
 }
 
 static int lio_tpg_check_demo_mode(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_attrib.generate_node_acls;
+	return iscsi_tpg(se_tpg)->tpg_attrib.generate_node_acls;
 }
 
 static int lio_tpg_check_demo_mode_cache(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_attrib.cache_dynamic_acls;
+	return iscsi_tpg(se_tpg)->tpg_attrib.cache_dynamic_acls;
 }
 
 static int lio_tpg_check_demo_mode_write_protect(
 	struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_attrib.demo_mode_write_protect;
+	return iscsi_tpg(se_tpg)->tpg_attrib.demo_mode_write_protect;
 }
 
 static int lio_tpg_check_prod_mode_write_protect(
 	struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_attrib.prod_mode_write_protect;
+	return iscsi_tpg(se_tpg)->tpg_attrib.prod_mode_write_protect;
 }
 
 static void lio_tpg_release_fabric_acl(
@@ -2014,9 +2005,7 @@ static void lio_tpg_close_session(struct se_session *se_sess)
 
 static u32 lio_tpg_get_inst_index(struct se_portal_group *se_tpg)
 {
-	struct iscsi_portal_group *tpg = se_tpg->se_tpg_fabric_ptr;
-
-	return tpg->tpg_tiqn->tiqn_index;
+	return iscsi_tpg(se_tpg)->tpg_tiqn->tiqn_index;
 }
 
 static void lio_set_default_node_attributes(struct se_node_acl *se_acl)

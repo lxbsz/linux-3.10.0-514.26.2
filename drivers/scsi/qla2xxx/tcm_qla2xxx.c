@@ -1050,7 +1050,7 @@ static struct se_portal_group *tcm_qla2xxx_make_tpg(
 	QLA_TPG_ATTRIB(tpg)->cache_dynamic_acls = 1;
 
 	ret = core_tpg_register(&tcm_qla2xxx_fabric_configfs->tf_ops, wwn,
-				&tpg->se_tpg, tpg, TRANSPORT_TPG_TYPE_NORMAL);
+				&tpg->se_tpg, SCSI_PROTOCOL_FCP);
 	if (ret < 0) {
 		kfree(tpg);
 		return NULL;
@@ -1113,7 +1113,7 @@ static struct se_portal_group *tcm_qla2xxx_npiv_make_tpg(
 	tpg->lport_tpgt = tpgt;
 
 	ret = core_tpg_register(&tcm_qla2xxx_npiv_fabric_configfs->tf_ops, wwn,
-				&tpg->se_tpg, tpg, TRANSPORT_TPG_TYPE_NORMAL);
+				&tpg->se_tpg, SCSI_PROTOCOL_FCP);
 	if (ret < 0) {
 		kfree(tpg);
 		return NULL;
