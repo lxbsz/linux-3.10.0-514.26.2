@@ -1014,6 +1014,28 @@ static ssize_t target_stat_scsi_transport_show_attr_dev_name(
 }
 DEV_STAT_SCSI_TRANSPORT_ATTR_RO(dev_name);
 
+static ssize_t target_stat_scsi_transport_show_attr_proto_id(
+	struct se_port_stat_grps *pgrps, char *page)
+{
+	struct se_lun *lun = container_of(pgrps, struct se_lun, port_stat_grps);
+	struct se_port *sep;
+	struct se_portal_group *tpg;
+	ssize_t ret;
+
+	rcu_read_lock();
+	sep = lun->lun_sep;
+	if (!sep) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+	tpg = sep->sep_tpg;
+	/* scsiTransportDevName */
+	ret = snprintf(page, PAGE_SIZE, "%u\n", tpg->proto_id);
+	rcu_read_unlock();
+	return ret;
+}
+DEV_STAT_SCSI_TRANSPORT_ATTR_RO(proto_id);
+
 CONFIGFS_EATTR_OPS(target_stat_scsi_transport, se_port_stat_grps,
 		scsi_transport_group);
 
@@ -1022,6 +1044,7 @@ static struct configfs_attribute *target_stat_scsi_transport_attrs[] = {
 	&target_stat_scsi_transport_device.attr,
 	&target_stat_scsi_transport_indx.attr,
 	&target_stat_scsi_transport_dev_name.attr,
+	&target_stat_scsi_transport_proto_id.attr,
 	NULL,
 };
 
