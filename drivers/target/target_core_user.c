@@ -38,6 +38,7 @@
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
 #include <target/target_core_backend.h>
+#include <target/configfs_macros.h>
 
 #include <linux/target_core_user.h>
 
@@ -1791,26 +1792,35 @@ tcmu_parse_cdb(struct se_cmd *cmd)
 	return TCM_NO_SENSE;
 }
 
-static ssize_t tcmu_cmd_time_out_show(struct config_item *item, char *page)
+struct tcmu_dev_attrib_attribute {
+	struct configfs_attribute attr;
+	ssize_t (*show)(struct se_dev_attrib *, char *);
+	ssize_t (*store)(struct se_dev_attrib *, const char *, size_t);
+};
+
+#define TB_DEV_ATTR(_backend, _name, _mode)				\
+static struct tcmu_dev_attrib_attribute _backend##attr_##_name = \
+		__CONFIGFS_EATTR(_name, _mode,				\
+		_backend##_name##_show,			\
+		_backend##_name##_store);
+
+static ssize_t tcmu_cmd_time_out_show(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-					struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = container_of(da->da_dev,
 					struct tcmu_dev, se_dev);
 
 	return snprintf(page, PAGE_SIZE, "%lu\n", udev->cmd_time_out / MSEC_PER_SEC);
 }
 
-static ssize_t tcmu_cmd_time_out_store(struct config_item *item, const char *page,
+static ssize_t tcmu_cmd_time_out_store(struct se_dev_attrib *da, const char *page,
 				       size_t count)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-					struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = container_of(da->da_dev,
 					struct tcmu_dev, se_dev);
 	u32 val;
 	int ret;
 
+	printk("page: %s\n", page);
 	if (da->da_dev->export_count) {
 		pr_err("Unable to set tcmu cmd_time_out while exports exist\n");
 		return -EINVAL;
@@ -1823,22 +1833,18 @@ static ssize_t tcmu_cmd_time_out_store(struct config_item *item, const char *pag
 	udev->cmd_time_out = val * MSEC_PER_SEC;
 	return count;
 }
-CONFIGFS_ATTR(tcmu_, cmd_time_out);
+TB_DEV_ATTR(tcmu_, cmd_time_out, S_IRUGO | S_IWUSR);
 
-static ssize_t tcmu_dev_config_show(struct config_item *item, char *page)
+static ssize_t tcmu_dev_config_show(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-						struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 
 	return snprintf(page, PAGE_SIZE, "%s\n", udev->dev_config);
 }
 
-static ssize_t tcmu_dev_config_store(struct config_item *item, const char *page,
+static ssize_t tcmu_dev_config_store(struct se_dev_attrib *da, const char *page,
 				     size_t count)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-						struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 	int ret, len;
 
@@ -1865,22 +1871,18 @@ static ssize_t tcmu_dev_config_store(struct config_item *item, const char *page,
 
 	return count;
 }
-CONFIGFS_ATTR(tcmu_, dev_config);
+TB_DEV_ATTR(tcmu_, dev_config, S_IRUGO | S_IWUSR);
 
-static ssize_t tcmu_dev_size_show(struct config_item *item, char *page)
+static ssize_t tcmu_dev_size_show(struct se_dev_attrib *da, char *page)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-						struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 
 	return snprintf(page, PAGE_SIZE, "%zu\n", udev->dev_size);
 }
 
-static ssize_t tcmu_dev_size_store(struct config_item *item, const char *page,
+static ssize_t tcmu_dev_size_store(struct se_dev_attrib *da, const char *page,
 				   size_t count)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-						struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 	u64 val;
 	int ret;
@@ -1901,22 +1903,17 @@ static ssize_t tcmu_dev_size_store(struct config_item *item, const char *page,
 	udev->dev_size = val;
 	return count;
 }
-CONFIGFS_ATTR(tcmu_, dev_size);
+TB_DEV_ATTR(tcmu_, dev_size, S_IRUGO | S_IWUSR);
 
-static ssize_t tcmu_emulate_write_cache_show(struct config_item *item,
+static ssize_t tcmu_emulate_write_cache_show(struct se_dev_attrib *da,
 					     char *page)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-					struct se_dev_attrib, da_group);
-
 	return snprintf(page, PAGE_SIZE, "%i\n", da->emulate_write_cache);
 }
 
-static ssize_t tcmu_emulate_write_cache_store(struct config_item *item,
+static ssize_t tcmu_emulate_write_cache_store(struct se_dev_attrib *da,
 					      const char *page, size_t count)
 {
-	struct se_dev_attrib *da = container_of(to_config_group(item),
-					struct se_dev_attrib, da_group);
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 	u8 val;
 	int ret;
@@ -1938,13 +1935,13 @@ static ssize_t tcmu_emulate_write_cache_store(struct config_item *item,
 	da->emulate_write_cache = val;
 	return count;
 }
-CONFIGFS_ATTR(tcmu_, emulate_write_cache);
+TB_DEV_ATTR(tcmu_, emulate_write_cache, S_IRUGO | S_IWUSR);
 
 static struct configfs_attribute *tcmu_attrib_attrs[] = {
-	&tcmu_attr_cmd_time_out,
-	&tcmu_attr_dev_config,
-	&tcmu_attr_dev_size,
-	&tcmu_attr_emulate_write_cache,
+	&tcmu_attr_cmd_time_out.attr,
+	&tcmu_attr_dev_config.attr,
+	&tcmu_attr_dev_size.attr,
+	&tcmu_attr_emulate_write_cache.attr,
 	NULL,
 };
 
