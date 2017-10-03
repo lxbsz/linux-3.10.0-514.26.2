@@ -343,11 +343,6 @@ static struct genl_family tcmu_genl_family = {
 #define tcmu_cmd_set_dbi(cmd, index) ((cmd)->dbi[(cmd)->dbi_cur++] = (index))
 #define tcmu_cmd_get_dbi(cmd) ((cmd)->dbi[(cmd)->dbi_cur++])
 
-static inline bool is_in_waiter_list(struct tcmu_dev *udev)
-{
-	return !!udev->waiting_blocks;
-}
-
 static void tcmu_cmd_free_data(struct tcmu_cmd *tcmu_cmd, uint32_t len)
 {
 	struct tcmu_dev *udev = tcmu_cmd->tcmu_dev;
@@ -844,7 +839,6 @@ tcmu_queue_cmd_ring(struct tcmu_cmd *tcmu_cmd)
 
 	while (!is_ring_space_avail(udev, tcmu_cmd, command_size, data_length)) {
 		int ret;
-		bool is_waiting_blocks = is_in_waiter_list(udev);
 		DEFINE_WAIT(__wait);
 
 		prepare_to_wait(&udev->wait_cmdr, &__wait, TASK_INTERRUPTIBLE);
@@ -854,7 +848,7 @@ tcmu_queue_cmd_ring(struct tcmu_cmd *tcmu_cmd)
 		 * Try to insert the current udev to waiter list and
 		 * then wake up the unmap thread
 		 */
-		if (is_waiting_blocks) {
+		if (udev->waiting_blocks) {
 			spin_lock(&root_udev_waiter_lock);
 			if (list_empty(&udev->waiter))
 				list_add_tail(&udev->waiter, &root_udev_waiter);
@@ -1187,7 +1181,7 @@ static int tcmu_irqcontrol(struct uio_info *info, s32 irq_on)
 	 * make sure that the other waiters in list be fed ahead
 	 * of it.
 	 */
-	if (is_in_waiter_list(tcmu_dev)) {
+	if (tcmu_dev->waiting_blocks) {
 		wake_up(&unmap_wait);
 	} else {
 		tcmu_handle_completions(tcmu_dev);
@@ -2107,7 +2101,7 @@ static uint32_t find_free_blocks(void)
 		tcmu_handle_completions(udev);
 
 		/* Skip the udevs waiting the global pool or in idle */
-		if (is_in_waiter_list(udev) || !udev->dbi_thresh) {
+		if (udev->waiting_blocks || !udev->dbi_thresh) {
 			mutex_unlock(&udev->cmdr_lock);
 			continue;
 		}
