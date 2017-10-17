@@ -1275,23 +1275,41 @@ done:
 	return drained;
 }
 
+static bool tcmu_waiting_on_dev_blocks(struct tcmu_dev *udev)
+{
+	return list_empty(&udev->waiter) && !list_empty(&udev->cmdr_queue);
+}
+
 static int tcmu_irqcontrol(struct uio_info *info, s32 irq_on)
 {
-	struct tcmu_dev *tcmu_dev = container_of(info, struct tcmu_dev, uio_info);
+	struct tcmu_dev *udev = container_of(info, struct tcmu_dev, uio_info);
+	bool run_local = true;
 
-	mutex_lock(&tcmu_dev->cmdr_lock);
-	/*
-	 * If the current udev is also in waiter list, this will
-	 * make sure that the other waiters in list be fed ahead
-	 * of it.
-	 */
-	if (!list_empty(&tcmu_dev->waiter)) {
-		schedule_work(&tcmu_unmap_work);
-	} else {
-		tcmu_handle_completions(tcmu_dev);
-		run_cmdr_queue(tcmu_dev);
+	mutex_lock(&udev->cmdr_lock);
+
+	if (atomic_read(&global_db_count) == TCMU_GLOBAL_MAX_BLOCKS) {
+		spin_lock(&root_udev_waiter_lock);
+		if (!list_empty(&root_udev_waiter)) {
+			/*
+			 * If we only hit the per block limit then make sure
+			 * we are added to the global list so we get run
+			 * after the other waiters.
+			 */
+			if (tcmu_waiting_on_dev_blocks(udev))
+				list_add_tail(&udev->waiter, &root_udev_waiter);
+
+			run_local = false;
+			schedule_work(&tcmu_unmap_work);
+		}
+		spin_unlock(&root_udev_waiter_lock);
 	}
-	mutex_unlock(&tcmu_dev->cmdr_lock);
+
+	if (run_local) {
+		tcmu_handle_completions(udev);
+		run_cmdr_queue(udev);
+	}
+
+	mutex_unlock(&udev->cmdr_lock);
 
 	return 0;
 }
@@ -2244,8 +2262,7 @@ retry:
 		/* Release the block pages */
 		tcmu_blocks_release(&udev->data_blocks, start, end);
 
-		if (list_empty(&udev->waiter) &&
-		    !list_empty(&udev->cmdr_queue)) {
+		if (tcmu_waiting_on_dev_blocks(udev)) {
 			/*
 			 * if we had to take pages from a dev that hit its
 			 * DATA_BLOCK_BITS limit put it on the waiter
