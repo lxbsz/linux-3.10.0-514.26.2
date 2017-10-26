@@ -152,6 +152,8 @@ struct tcmu_dev {
 	wait_queue_head_t nl_cmd_wq;
 
 	char dev_config[TCMU_CONFIG_LEN];
+
+	int nl_reply_supported;
 };
 
 #define TCMU_DEV(_se_dev) container_of(_se_dev, struct tcmu_dev, se_dev)
@@ -1423,6 +1425,10 @@ static void tcmu_init_genl_cmd_reply(struct tcmu_dev *udev, int cmd)
 
 	if (!tcmu_kern_cmd_reply_supported)
 		return;
+
+	if (udev->nl_reply_supported <= 0)
+		return;
+
 relock:
 	spin_lock(&udev->nl_cmd_lock);
 
@@ -1447,6 +1453,9 @@ static int tcmu_wait_genl_cmd_reply(struct tcmu_dev *udev)
 	DEFINE_WAIT(__wait);
 
 	if (!tcmu_kern_cmd_reply_supported)
+		return 0;
+
+	if (udev->nl_reply_supported <= 0)
 		return 0;
 
 	pr_debug("sleeping for nl reply\n");
@@ -1621,6 +1630,12 @@ static int tcmu_configure_device(struct se_device *dev)
 		dev->dev_attrib.emulate_write_cache = 0;
 	dev->dev_attrib.hw_queue_depth = 128;
 
+	/* If user didn't explicitly disable netlink reply support, use
+	 * module scope setting.
+	 */
+	if (udev->nl_reply_supported >= 0)
+		udev->nl_reply_supported = tcmu_kern_cmd_reply_supported;
+
 	/*
 	 * Get a ref incase userspace does a close on the uio device before
 	 * LIO has initiated tcmu_free_device.
@@ -1690,7 +1705,7 @@ static void tcmu_destroy_device(struct se_device *dev)
 
 enum {
 	Opt_dev_config, Opt_dev_size, Opt_hw_block_size, Opt_hw_max_sectors,
-	Opt_err,
+	Opt_nl_reply_supported, Opt_err,
 };
 
 static match_table_t tokens = {
@@ -1698,6 +1713,7 @@ static match_table_t tokens = {
 	{Opt_dev_size, "dev_size=%u"},
 	{Opt_hw_block_size, "hw_block_size=%u"},
 	{Opt_hw_max_sectors, "hw_max_sectors=%u"},
+	{Opt_nl_reply_supported, "nl_reply_supported=%d"},
 	{Opt_err, NULL}
 };
 
@@ -1771,6 +1787,17 @@ static ssize_t tcmu_set_configfs_dev_params(struct se_device *dev,
 		case Opt_hw_max_sectors:
 			ret = tcmu_set_dev_attrib(&args[0],
 					&(dev->dev_attrib.hw_max_sectors));
+			break;
+		case Opt_nl_reply_supported:
+			arg_p = match_strdup(&args[0]);
+			if (!arg_p) {
+				ret = -ENOMEM;
+				break;
+			}
+			ret = kstrtoint(arg_p, 0, &udev->nl_reply_supported);
+			kfree(arg_p);
+			if (ret < 0)
+				pr_err("kstrtoint() failed for nl_reply_supported=\n");
 			break;
 		default:
 			break;
@@ -1985,6 +2012,30 @@ static ssize_t tcmu_dev_size_store(struct se_dev_attrib *da, const char *page,
 }
 TB_DEV_ATTR(tcmu_, dev_size, S_IRUGO | S_IWUSR);
 
+static ssize_t tcmu_nl_reply_supported_show(struct se_dev_attrib *da,
+					    char *page)
+{
+	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
+
+	return snprintf(page, PAGE_SIZE, "%d\n", udev->nl_reply_supported);
+}
+
+static ssize_t tcmu_nl_reply_supported_store(struct se_dev_attrib *da,
+					     const char *page, size_t count)
+{
+	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
+	s8 val;
+	int ret;
+
+	ret = kstrtos8(page, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	udev->nl_reply_supported = val;
+	return count;
+}
+TB_DEV_ATTR(tcmu_, nl_reply_supported, S_IRUGO | S_IWUSR);
+
 static ssize_t tcmu_emulate_write_cache_show(struct se_dev_attrib *da,
 					     char *page)
 {
@@ -2021,6 +2072,7 @@ static struct configfs_attribute *tcmu_attrib_attrs[] = {
 	&tcmu_attr_cmd_time_out.attr,
 	&tcmu_attr_dev_config.attr,
 	&tcmu_attr_dev_size.attr,
+	&tcmu_attr_nl_reply_supported.attr,
 	&tcmu_attr_emulate_write_cache.attr,
 	NULL,
 };
