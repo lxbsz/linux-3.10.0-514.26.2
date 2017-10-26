@@ -1913,8 +1913,7 @@ static struct tcmu_dev_attrib_attribute _backend##attr_##_name = \
 
 static ssize_t tcmu_cmd_time_out_show(struct se_dev_attrib *da, char *page)
 {
-	struct tcmu_dev *udev = container_of(da->da_dev,
-					struct tcmu_dev, se_dev);
+	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 
 	return snprintf(page, PAGE_SIZE, "%lu\n", udev->cmd_time_out / MSEC_PER_SEC);
 }
@@ -1922,8 +1921,7 @@ static ssize_t tcmu_cmd_time_out_show(struct se_dev_attrib *da, char *page)
 static ssize_t tcmu_cmd_time_out_store(struct se_dev_attrib *da, const char *page,
 				       size_t count)
 {
-	struct tcmu_dev *udev = container_of(da->da_dev,
-					struct tcmu_dev, se_dev);
+	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
 	u32 val;
 	int ret;
 
