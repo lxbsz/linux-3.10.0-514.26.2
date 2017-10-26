@@ -32,7 +32,7 @@
 #include <linux/highmem.h>
 #include <linux/configfs.h>
 #include <linux/mutex.h>
-#include <linux/kthread.h>
+#include <linux/workqueue.h>
 #include <net/genetlink.h>
 #include <asm/unaligned.h>
 #include <target/target_core_base.h>
@@ -179,9 +179,6 @@ struct tcmu_cmd {
 	unsigned long flags;
 };
 
-static struct task_struct *unmap_thread;
-static wait_queue_head_t unmap_wait;
-
 static DEFINE_SPINLOCK(timed_out_udevs_lock);
 static LIST_HEAD(timed_out_udevs);
 
@@ -203,6 +200,7 @@ static DEFINE_SPINLOCK(root_udev_waiter_lock);
 static LIST_HEAD(root_udev_waiter);
 
 static atomic_t global_db_count = ATOMIC_INIT(0);
+struct work_struct tcmu_unmap_work;
 
 static struct kmem_cache *tcmu_cmd_cache;
 
@@ -822,7 +820,7 @@ static int add_to_cmdr_queue(struct tcmu_cmd *tcmu_cmd)
 		pr_debug("adding %s to block waiter list\n", udev->name);
 
 		list_add_tail(&udev->waiter, &root_udev_waiter);
-		wake_up(&unmap_wait);
+		schedule_work(&tcmu_unmap_work);
 	}
 	spin_unlock(&root_udev_waiter_lock);
 	return 0;
@@ -1169,7 +1167,7 @@ static void tcmu_device_timedout(unsigned long data)
 		list_add_tail(&udev->timedout_entry, &timed_out_udevs);
 	spin_unlock(&timed_out_udevs_lock);
 
-	wake_up(&unmap_wait);
+	schedule_work(&tcmu_unmap_work);
 }
 
 static int tcmu_attach_hba(struct se_hba *hba, u32 host_id)
@@ -1288,7 +1286,7 @@ static int tcmu_irqcontrol(struct uio_info *info, s32 irq_on)
 	 * of it.
 	 */
 	if (!list_empty(&tcmu_dev->waiter)) {
-		wake_up(&unmap_wait);
+		schedule_work(&tcmu_unmap_work);
 	} else {
 		tcmu_handle_completions(tcmu_dev);
 		run_cmdr_queue(tcmu_dev);
@@ -2354,50 +2352,11 @@ static void check_timedout_devices(void)
 	spin_unlock_bh(&timed_out_udevs_lock);
 }
 
-static int unmap_thread_fn(void *data)
+static void tcmu_unmap_work_fn(struct work_struct *work)
 {
-	bool drained = true;
-	bool has_block_waiters;
-	bool has_timed_out_devs;
-
-	while (!kthread_should_stop()) {
-		DEFINE_WAIT(__wait);
-
-		prepare_to_wait(&unmap_wait, &__wait, TASK_INTERRUPTIBLE);
-		/*
-		 * If we had space left, check if devs were added/readded
-		 * while the lock was dropped.
-		 */
-		spin_lock(&root_udev_waiter_lock);
-		has_block_waiters = true;
-		if (list_empty(&root_udev_waiter))
-			has_block_waiters = false;
-		spin_unlock(&root_udev_waiter_lock);
-
-		spin_lock_bh(&timed_out_udevs_lock);
-		has_timed_out_devs = true;
-		if (list_empty(&timed_out_udevs))
-			has_timed_out_devs = false;
-		spin_unlock_bh(&timed_out_udevs_lock);
-
-		/*
-		 * Handle race where new waiters were added and we still
-		 * had space (were at least able to drain the queue on
-		 * the previous run).
-		 */
-		if ((!drained || !has_block_waiters) && !has_timed_out_devs)
-			schedule();
-
-		finish_wait(&unmap_wait, &__wait);
-
-		check_timedout_devices();
-
-		find_free_blocks();
-
-		drained = run_cmdr_queues();
-	}
-
-	return 0;
+	check_timedout_devices();
+	find_free_blocks();
+	run_cmdr_queues();
 }
 
 static int __init tcmu_module_init(void)
@@ -2405,6 +2364,8 @@ static int __init tcmu_module_init(void)
 	int ret, i, k, len = 0;
 
 	BUILD_BUG_ON((sizeof(struct tcmu_cmd_entry) % TCMU_OP_ALIGN_SIZE) != 0);
+
+	INIT_WORK(&tcmu_unmap_work, tcmu_unmap_work_fn);
 
 	tcmu_cmd_cache = kmem_cache_create("tcmu_cmd_cache",
 				sizeof(struct tcmu_cmd),
@@ -2451,17 +2412,8 @@ static int __init tcmu_module_init(void)
 	if (ret)
 		goto out_attrs;
 
-	init_waitqueue_head(&unmap_wait);
-	unmap_thread = kthread_run(unmap_thread_fn, NULL, "tcmu_unmap");
-	if (IS_ERR(unmap_thread)) {
-		ret = PTR_ERR(unmap_thread);
-		goto out_unreg_transport;
-	}
-
 	return 0;
 
-out_unreg_transport:
-	target_backend_unregister(&tcmu_ops);
 out_attrs:
 	kfree(tcmu_attrs);
 out_unreg_genl:
@@ -2476,7 +2428,7 @@ out_free_cache:
 
 static void __exit tcmu_module_exit(void)
 {
-	kthread_stop(unmap_thread);
+	cancel_work_sync(&tcmu_unmap_work);
 	target_backend_unregister(&tcmu_ops);
 	kfree(tcmu_attrs);
 	genl_unregister_family(&tcmu_genl_family);
