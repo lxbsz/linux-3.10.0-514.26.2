@@ -143,6 +143,7 @@ struct tcmu_dev {
 
 	struct timer_list timeout;
 	unsigned int cmd_time_out;
+	unsigned int qfull_time_out;
 
 	spinlock_t nl_cmd_lock;
 	struct tcmu_nl_cmd curr_nl_cmd;
@@ -803,12 +804,15 @@ tcmu_queue_cmd_ring(struct tcmu_cmd *tcmu_cmd)
 		if (udev->cmd_time_out)
 			ret = schedule_timeout(
 					msecs_to_jiffies(udev->cmd_time_out));
+		else if (udev->qfull_time_out)
+			ret = schedule_timeout(
+					msecs_to_jiffies(udev->qfull_time_out));
 		else
 			ret = schedule_timeout(msecs_to_jiffies(TCMU_TIME_OUT));
 		finish_wait(&udev->wait_cmdr, &__wait);
 		if (!ret) {
-			pr_warn("tcmu: command timed out\n");
-			return TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+			pr_warn("tcmu: command timed out waiting for ring space.\n");
+			return TCM_OUT_OF_RESOURCES;
 		}
 
 		mutex_lock(&udev->cmdr_lock);
@@ -1835,6 +1839,31 @@ static ssize_t tcmu_cmd_time_out_store(struct se_dev_attrib *da, const char *pag
 }
 TB_DEV_ATTR(tcmu_, cmd_time_out, S_IRUGO | S_IWUSR);
 
+static ssize_t tcmu_qfull_time_out_show(struct se_dev_attrib *da, char *page)
+{
+	struct tcmu_dev *udev = container_of(da->da_dev,
+					struct tcmu_dev, se_dev);
+
+	return snprintf(page, PAGE_SIZE, "%lu\n", udev->qfull_time_out / MSEC_PER_SEC);
+}
+
+static ssize_t tcmu_qfull_time_out_store(struct se_dev_attrib *da,
+					 const char *page, size_t count)
+{
+	struct tcmu_dev *udev = container_of(da->da_dev,
+					struct tcmu_dev, se_dev);
+	u32 val;
+	int ret;
+
+	ret = kstrtou32(page, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	udev->qfull_time_out = val * MSEC_PER_SEC;
+	return count;
+}
+TB_DEV_ATTR(tcmu_, qfull_time_out, S_IRUGO | S_IWUSR);
+
 static ssize_t tcmu_dev_config_show(struct se_dev_attrib *da, char *page)
 {
 	struct tcmu_dev *udev = TCMU_DEV(da->da_dev);
@@ -1938,6 +1967,7 @@ static ssize_t tcmu_emulate_write_cache_store(struct se_dev_attrib *da,
 TB_DEV_ATTR(tcmu_, emulate_write_cache, S_IRUGO | S_IWUSR);
 
 static struct configfs_attribute *tcmu_attrib_attrs[] = {
+	&tcmu_attr_qfull_time_out.attr,
 	&tcmu_attr_cmd_time_out.attr,
 	&tcmu_attr_dev_config.attr,
 	&tcmu_attr_dev_size.attr,
