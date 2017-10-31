@@ -140,8 +140,7 @@ void core_tpg_add_node_to_devs(
 
 		spin_unlock(&tpg->tpg_lun_lock);
 
-		dev = rcu_dereference_check(lun->lun_se_dev,
-					    lockdep_is_held(&tpg->tpg_lun_mutex));
+		dev = lun->lun_se_dev;
 		/*
 		 * By default in LIO-Target $FABRIC_MOD,
 		 * demo_mode_write_protect is ON, or READ_ONLY;
